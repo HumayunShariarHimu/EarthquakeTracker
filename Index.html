@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EarthquakeTracker - রিয়েল-টাইম ভূমিকম্প মনিটর</title>
+<style>
+    /* ----------------------------------------------------- */
+    /* ১. বেস এবং ফন্ট */
+    /* ----------------------------------------------------- */
+    * { box-sizing: border-box; }
+    body { 
+        margin: 0; 
+        font-family: 'Roboto', sans-serif; /* প্রিমিয়াম ফন্ট */
+        background: #f4f6f8; /* হালকা ব্যাকগ্রাউন্ড */
+        color: #333;
+        transition: background 0.3s;
+    }
+
+    /* রোবটো ফন্ট আমদানি */
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap');
+
+    /* ----------------------------------------------------- */
+    /* ২. হেডার এবং লেআউট */
+    /* ----------------------------------------------------- */
+    header { 
+        background: #1f2937; /* ডার্ক নেভি ব্লু হেডার */
+        color: white; 
+        text-align: center; 
+        padding: 1rem; 
+        font-size: 1.8rem; 
+        font-weight: 900;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        letter-spacing: 0.5px;
+    }
+
+    #container { 
+        display: flex; 
+        flex-direction: column; 
+        height: calc(100vh - 70px); 
+    }
+    
+    #map { flex: 1; min-height: 45vh; position: relative; }
+
+    /* ----------------------------------------------------- */
+    /* ৩. ম্যাপ কন্ট্রোলস (সেগমেন্টেড বাটন) */
+    /* ----------------------------------------------------- */
+    #mapViewControls { 
+        position: absolute; 
+        top: 15px; 
+        right: 15px; 
+        z-index: 1000; 
+        background: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        display: flex;
+        overflow: hidden;
+    }
+    #mapViewControls button {
+        background: none;
+        border: none;
+        padding: 8px 15px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #4b5563;
+        transition: background-color 0.2s, color 0.2s;
+        border-right: 1px solid #e5e7eb;
+    }
+    #mapViewControls button:last-child {
+        border-right: none;
+    }
+
+    #mapViewControls button.active {
+        background-color: #3b82f6; /* ব্লু হাইলাইট */
+        color: white;
+        box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.1);
+    }
+    #mapViewControls button:not(.active):hover {
+        background-color: #f3f4f6;
+    }
+
+    /* ----------------------------------------------------- */
+    /* ৪. লোকাল ম্যাগনিটিউড বার */
+    /* ----------------------------------------------------- */
+    #localMagnitudeBar { 
+        padding: 15px 20px; 
+        background: #ef4444; /* অ্যালার্ট রেড */
+        color: white;
+        font-weight: bold; 
+        font-size: 1.3rem; 
+        text-align: center;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px; 
+    }
+    #localMagnitudeBar .alert-icon {
+        font-size: 1.6rem; 
+        animation: pulse 1s infinite alternate;
+    }
+    @keyframes pulse {
+        from { transform: scale(1); opacity: 1; }
+        to { transform: scale(1.05); opacity: 0.9; }
+    }
+
+    /* ----------------------------------------------------- */
+    /* ৫. ইনফো প্যানেল এবং তালিকা */
+    /* ----------------------------------------------------- */
+    #info { 
+        height: 30vh; 
+        min-height: 220px;
+        overflow-y: auto; 
+        background: #1f2937; /* ডার্ক থিম */
+        color: #f3f4f6;
+        padding: 15px; 
+        border-top: 2px solid #3b82f6; /* হাইলাইট বর্ডার */
+        box-shadow: 0 -4px 10px rgba(0,0,0,0.3);
+    }
+    #info h3 { 
+        margin-top: 0; 
+        color: #9ca3af; 
+        border-bottom: 2px solid #374151; 
+        padding-bottom: 10px; 
+        margin-bottom: 15px;
+        font-weight: 700;
+        font-size: 1.1rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .quake { 
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #374151; /* আইটেম ব্যাকগ্রাউন্ড */
+        border-left: 6px solid; 
+        padding: 12px 15px; 
+        margin-bottom: 10px; 
+        border-radius: 8px; 
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2); 
+        cursor: pointer; 
+        transition: all 0.3s ease;
+    }
+    .quake:hover { 
+        background: #4b5563; 
+        transform: translateY(-2px); 
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+
+    .quake-details {
+        flex-grow: 1;
+        text-align: left;
+    }
+    .quake-meta {
+        text-align: right;
+    }
+
+    /* ম্যাগনিটিউড কালার কোডিং */
+    .quake[data-mag-level='high'] { border-left-color: #f97316; } /* > 5.5 - কমলা/লাল */
+    .quake[data-mag-level='medium'] { border-left-color: #facc15; } /* 3.0 - 5.5 - হলুদ */
+    .quake[data-mag-level='low'] { border-left-color: #34d399; } /* < 3.0 - সবুজ */
+
+    .quake b { display:block; margin-bottom:2px; font-size: 1.15rem; color: white; font-weight: 700; }
+    .quake span { font-size: 0.9rem; color: #9ca3af; }
+
+    /* ----------------------------------------------------- */
+    /* ৬. মোবাইল রেসপন্সিভনেস */
+    /* ----------------------------------------------------- */
+    @media(max-width: 768px){
+        header { font-size: 1.4rem; padding: 0.6rem; }
+        #container { height: calc(100vh - 51px); }
+        
+        #mapViewControls { 
+            top: 10px; 
+            right: 10px; 
+            border-radius: 6px; 
+        }
+        #mapViewControls button {
+            padding: 6px 10px;
+            font-size: 0.75rem;
+        }
+
+        #localMagnitudeBar { 
+            font-size: 1.1rem; 
+            padding: 10px 15px;
+        }
+        #localMagnitudeBar .alert-icon {
+            font-size: 1.4rem;
+        }
+
+        #info { 
+            height: 35vh; 
+            min-height: 200px;
+            padding: 10px;
+        }
+        .quake { 
+            padding: 10px; 
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .quake-meta {
+            text-align: left;
+            margin-top: 5px;
+        }
+        .quake b { font-size: 1rem; }
+        .quake span { font-size: 0.8rem; }
+    }
+</style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"> 
+</head>
+<body>
+
+<header>EarthquakeTracker</header>
+
+<div id="container">
+    <div id="map">
+        <div id="mapViewControls">
+            <button id="streetsBtn" onclick="setMapView('streets')" class="active">Streets</button>
+            <button id="satelliteBtn" onclick="setMapView('satellite')">Satellite</button>
+        </div>
+    </div>
+    
+    <div id="localMagnitudeBar"><span class="alert-icon fas fa-exclamation-triangle"></span> লাইভ কম্পন: 0.00</div>
+    
+    <div id="info"><h3>সাম্প্রতিক ভূমিকম্পসমূহ (গত এক ঘণ্টা)</h3></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    let map = L.map('map').setView([23.8103, 90.4125], 5);
+
+    // টাইল লেয়ার
+    let streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'&copy; OpenStreetMap contributors' });
+    let satellite = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { maxZoom:20, subdomains:['mt0','mt1','mt2','mt3'], attribution:'Google Satellite' });
+    
+    streets.addTo(map); 
+    let currentView = 'streets'; 
+
+    function setMapView(view){ 
+        if(view === currentView) return; 
+
+        document.querySelectorAll('#mapViewControls button').forEach(btn => btn.classList.remove('active'));
+
+        if(view === 'streets'){ 
+            if(map.hasLayer(satellite)) map.removeLayer(satellite); 
+            streets.addTo(map); 
+            document.getElementById('streetsBtn').classList.add('active');
+        } else { 
+            if(map.hasLayer(streets)) map.removeLayer(streets); 
+            satellite.addTo(map); 
+            document.getElementById('satelliteBtn').classList.add('active');
+        } 
+        currentView = view;
+    }
+
+    // ইউজারের লাইভ লোকেশন
+    let userLat = 23.8103, userLon = 90.4125;
+    navigator.geolocation.getCurrentPosition(position => {
+        userLat = position.coords.latitude;
+        userLon = position.coords.longitude;
+        // ইউজারের জন্য কাস্টম প্রিমিয়াম আইকন
+        L.marker([userLat, userLon], {
+            title:"আপনার অবস্থান", 
+            icon: L.divIcon({
+                className: 'user-marker-icon', 
+                html: '<div style="background-color:#3b82f6; width:18px; height:18px; border-radius:50%; border:3px solid white; box-shadow: 0 0 5px #3b82f6;"></div>', 
+                iconSize: [18, 18], 
+                iconAnchor: [9, 9]
+            })
+        }).addTo(map).bindPopup("আপনি এখানে আছেন").openPopup();
+    });
+
+    // ভূমিকম্প ডেটা
+    const quakeAPI = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson";
+    let quakeMarkers = [];
+
+    async function fetchQuakes(){
+        try {
+            const res = await fetch(quakeAPI);
+            const data = await res.json();
+            const infoDiv = document.getElementById('info');
+            infoDiv.innerHTML = "<h3>সাম্প্রতিক ভূমিকম্পসমূহ (গত এক ঘণ্টা)</h3>";
+
+            quakeMarkers.forEach(m=>map.removeLayer(m));
+            quakeMarkers=[];
+
+            let localMag = 0;
+
+            data.features.forEach(quake=>{
+                const [lon, lat, depth] = quake.geometry.coordinates;
+                const mag = quake.properties.mag;
+                const place = quake.properties.place;
+                const time = new Date(quake.properties.time);
+                const timeString = time.toLocaleString('bn-BD', { hour: '2-digit', minute: '2-digit', hour12: true });
+                const dateString = time.toLocaleDateString('bn-BD');
+
+
+                // ইউজারের কম্পমান হিসাব
+                const distance = getDistance(userLat,userLon,lat,lon);
+                const localEffect = mag * Math.max(0, 1 - distance / 1000); 
+                localMag += localEffect;
+
+                // কালার কোডিং
+                let color;
+                let magLevel;
+                if(mag >= 5.5){ color = '#ef4444'; magLevel = 'high'; } // Red Alert
+                else if(mag >= 3.0){ color = '#facc15'; magLevel = 'medium'; } // Yellow Warning
+                else { color = '#34d399'; magLevel = 'low'; } // Green Normal
+
+                // কম্পমান সার্কেল
+                const circle = L.circle([lat,lon], {
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.7,
+                    weight: 1, // আউটলাইন প্রিমিয়াম লুকের জন্য
+                    radius: mag * 18000 // স্কেল আরও বাড়ানো হলো
+                }).addTo(map);
+                quakeMarkers.push(circle);
+
+                // পপআপ
+                circle.bindPopup(`
+                    <div style="font-family:'Roboto', sans-serif; padding:5px; border-left: 3px solid ${color};">
+                        <b style="color:${color}; font-size:1.1rem;">${place}</b>
+                        <br>ম্যাগ: <span style="font-weight:bold;">${mag}</span>
+                        <br>গভীরতা: ${depth.toFixed(1)} km
+                        <br>সময়: ${dateString} ${timeString}
+                    </div>
+                `);
+
+                // তালিকায় দেখানো
+                const quakeDiv = document.createElement('div');
+                quakeDiv.className="quake";
+                quakeDiv.setAttribute('data-mag-level', magLevel);
+                quakeDiv.innerHTML=`
+                    <div class="quake-details">
+                        <b>${place}</b>
+                        <span>গভীরতা: ${depth.toFixed(1)} km</span>
+                    </div>
+                    <div class="quake-meta">
+                        <b>ম্যাগ: ${mag}</b>
+                        <span>সময়: ${timeString}</span>
+                    </div>
+                `;
+                quakeDiv.onclick=()=>{ map.setView([lat,lon],7); circle.openPopup(); shakeEffect(circle); playAlarm(mag); };
+                infoDiv.appendChild(quakeDiv);
+            });
+            
+            document.getElementById('localMagnitudeBar').innerHTML=`<span class="alert-icon fas fa-exclamation-triangle"></span> লাইভ কম্পন: ${localMag.toFixed(2)}`;
+
+        } catch (error) {
+            console.error("ভূমিকম্প ডেটা আনতে সমস্যা:", error);
+            document.getElementById('info').innerHTML = "<h3>ডেটা লোড করা যায়নি ❌</h3><p style='color:#9ca3af;'>API বা নেটওয়ার্ক সংযোগ পরীক্ষা করুন।</p>";
+        }
+    }
+
+    // দূরত্ব (হাভার্সাইন)
+    function getDistance(lat1,lon1,lat2,lon2){
+        const R=6371; const dLat=(lat2-lat1)*Math.PI/180; const dLon=(lon2-lon1)*Math.PI/180;
+        const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+        const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+        return R*c;
+    }
+
+    // শেক ইফেক্ট 
+    function shakeEffect(circle){
+        let radius=circle.getRadius(), i=0;
+        let interval=setInterval(()=>{
+            circle.setRadius(radius+Math.sin(i)*7000); i+=0.5;
+            if(i>6.28*3){ clearInterval(interval); circle.setRadius(radius);}
+        },30);
+    }
+
+    // এলার্ট সাউন্ড
+    function playAlarm(mag){ 
+        if(mag>=5.0){ 
+            const audio=new Audio('https://actions.google.com/sounds/v1/alarms/buzz_high.ogg'); 
+            audio.play(); 
+        } 
+    }
+
+    // প্রেডিকশন এলাকা (ডেমো)
+    function showPrediction(){
+        const zones=[ {lat:24.0,lon:90.0,radius:80000}, {lat:23.5,lon:91.0,radius:60000} ];
+        zones.forEach(zone=>{
+            L.circle([zone.lat,zone.lon], {color:'#f97316', fillColor:'#f97316', fillOpacity:0.1, weight: 3, dashArray: '10, 5'}).addTo(map).bindPopup("সম্ভাব্য ভবিষ্যৎ ভূমিকম্প এলাকা (ডেমো)");
+        });
+    }
+
+    // ইনিশিয়ালাইজেশন এবং আপডেট
+    fetchQuakes(); 
+    setInterval(fetchQuakes, 60000); 
+    showPrediction();
+</script>
+</body>
+</html>
